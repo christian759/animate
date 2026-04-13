@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import '../services/export_service.dart';
 
 enum DrawingTool { brush, eraser }
 
@@ -20,6 +21,10 @@ class ProjectProvider extends ChangeNotifier {
   bool _isPlaying = false;
   Timer? _playbackTimer;
 
+  // Export state
+  bool _isExporting = false;
+  double _exportProgress = 0.0;
+
   // Undo/Redo - For MVP, we'll store frame snapshots
   final List<List<AnimationFrame>> _undoStack = [];
   final List<List<AnimationFrame>> _redoStack = [];
@@ -32,6 +37,8 @@ class ProjectProvider extends ChangeNotifier {
   int get currentLayerIndex => _currentLayerIndex;
   List<Offset?> get activePoints => _activePoints;
   bool get isPlaying => _isPlaying;
+  bool get isExporting => _isExporting;
+  double get exportProgress => _exportProgress;
   
   int get currentFrameIndex => _project.currentFrameIndex;
   AnimationFrame get currentFrame => _project.currentFrame;
@@ -140,7 +147,6 @@ class ProjectProvider extends ChangeNotifier {
 
   void addLayer() {
     _saveToUndo();
-    final newLayer = AnimationLayer(name: 'Layer ${currentFrame.layers.length + 1}');
     final updatedFrames = List<AnimationFrame>.from(_project.frames);
     
     // Add layer to ALL frames for consistency? Or just current? 
@@ -195,6 +201,29 @@ class ProjectProvider extends ChangeNotifier {
     if (_redoStack.isNotEmpty) {
       _undoStack.add(List.from(_project.frames.map((f) => f.copyWith())));
       _project.frames = _redoStack.removeLast();
+      notifyListeners();
+    }
+  }
+
+  // Export
+  Future<String?> export(ExportFormat format) async {
+    _isExporting = true;
+    _exportProgress = 0.0;
+    notifyListeners();
+
+    try {
+      final result = await ExportService.exportProject(
+        project: _project,
+        format: format,
+        onProgress: (progress) {
+          _exportProgress = progress;
+          notifyListeners();
+        },
+      );
+      return result;
+    } finally {
+      _isExporting = false;
+      _exportProgress = 0.0;
       notifyListeners();
     }
   }

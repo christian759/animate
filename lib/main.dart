@@ -6,6 +6,7 @@ import 'ui/widgets/drawing_canvas.dart';
 import 'ui/widgets/toolbar.dart';
 import 'ui/widgets/timeline.dart';
 import 'ui/widgets/layer_panel.dart';
+import 'ui/widgets/export_dialog.dart';
 
 void main() {
   runApp(
@@ -137,7 +138,10 @@ class _TopHeader extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             onPressed: () {
-                // Future Export logic
+              showDialog(
+                context: context,
+                builder: (context) => const ExportDialog(),
+              );
             },
           ),
         ],
