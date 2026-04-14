@@ -211,7 +211,7 @@ class _ToolButton extends StatelessWidget {
         child: IconButton(
           icon: Icon(icon),
           color: isSelected ? theme.colorScheme.primary : Colors.white70,
-          onSizeConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
           iconSize: 26,
           onPressed: onTap,
           style: IconButton.styleFrom(

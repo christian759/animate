@@ -160,7 +160,7 @@ class CanvasPainter extends CustomPainter {
         ]));
         break;
       case EffectType.vintage:
-         canvas.saveLayer(null, Paint()..colorFilter = const ColorFilter.mode(
+         canvas.saveLayer(null, Paint()..colorFilter = ColorFilter.mode(
            Colors.deepOrangeAccent.withOpacity(0.1), BlendMode.softLight
          ));
          break;

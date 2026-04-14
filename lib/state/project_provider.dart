@@ -123,7 +123,7 @@ class ProjectProvider extends ChangeNotifier {
   // --- Audio ---
 
   Future<void> pickAudio() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.audio,
     );
     if (result != null) {
@@ -137,6 +137,96 @@ class ProjectProvider extends ChangeNotifier {
     _project.audioPath = null;
     saveCurrentProject();
     notifyListeners();
+  }
+
+  // --- Layer Management ---
+
+  void addLayer() {
+    _saveToUndo();
+    final layerName = 'Layer ${project.frames[0].layers.length + 1}';
+    for (var frame in _project.frames) {
+      frame.layers.add(AnimationLayer(name: layerName));
+    }
+    _currentLayerIndex = project.frames[0].layers.length - 1;
+    saveCurrentProject();
+    notifyListeners();
+  }
+
+  void setLayer(int index) {
+    if (index >= 0 && index < currentFrame.layers.length) {
+      _currentLayerIndex = index;
+      notifyListeners();
+    }
+  }
+
+  Future<void> importImageAsSketch() async {
+    _isProcessing = true;
+    _processingProgress = 0.0;
+    notifyListeners();
+    
+    try {
+      final sketchData = await _importService.pickAndSketchImage();
+      if (sketchData != null) {
+        _saveToUndo();
+        final layerName = 'Sketch ${DateTime.now().millisecondsSinceEpoch}';
+        for (var frame in _project.frames) {
+          frame.layers.add(AnimationLayer(
+            name: layerName,
+            sketchData: sketchData,
+          ));
+        }
+        _currentLayerIndex = currentFrame.layers.length - 1;
+        saveCurrentProject();
+      }
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> importVideoAsAnimation() async {
+    _isProcessing = true;
+    _processingProgress = 0.0;
+    notifyListeners();
+    
+    try {
+      final frames = await _importService.pickAndSketchVideo(
+        targetFps: _project.fps,
+        onProgress: (progress) {
+          _processingProgress = progress;
+          notifyListeners();
+        },
+      );
+      
+      if (frames != null && frames.isNotEmpty) {
+        _saveToUndo();
+        final layerName = 'Video Import';
+        
+        for (int i = 0; i < frames.length; i++) {
+          if (i < _project.frames.length) {
+            _project.frames[i].layers.add(AnimationLayer(
+              name: layerName,
+              sketchData: frames[i],
+            ));
+          } else {
+            // Create new frame
+            final newFrame = AnimationFrame(
+              layers: [
+                ..._project.frames[0].layers.map((l) => l.copyWith(paths: [], texts: [], sketchData: null)).toList(),
+                AnimationLayer(name: layerName, sketchData: frames[i])
+              ]
+            );
+            _project.frames.add(newFrame);
+          }
+        }
+        _currentLayerIndex = project.frames[0].layers.length - 1;
+        saveCurrentProject();
+      }
+    } finally {
+      _isProcessing = false;
+      _processingProgress = 0.0;
+      notifyListeners();
+    }
   }
 
   // --- Effects ---
