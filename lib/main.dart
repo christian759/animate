@@ -8,7 +8,11 @@ import 'ui/widgets/timeline.dart';
 import 'ui/widgets/layer_panel.dart';
 import 'ui/widgets/export_dialog.dart';
 
+import 'package:media_kit/media_kit.dart';
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   runApp(
     ChangeNotifierProvider(
       create: (context) => ProjectProvider(),

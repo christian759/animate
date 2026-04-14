@@ -21,12 +21,10 @@ class CanvasPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // 1. Draw Onion Skin (Previous Frame)
-        if (showOnionSkin && previousFrame != null) {
+    if (showOnionSkin && previousFrame != null) {
       for (var layer in previousFrame!.layers) {
         if (!layer.isVisible) continue;
-        for (var path in layer.paths) {
-          _drawPath(canvas, path, opacity: 0.2);
-        }
+        _drawLayer(canvas, layer, size, opacity: 0.2);
       }
     }
 
@@ -34,13 +32,11 @@ class CanvasPainter extends CustomPainter {
     if (currentFrame != null) {
       for (var layer in currentFrame!.layers) {
         if (!layer.isVisible) continue;
-        for (var path in layer.paths) {
-          _drawPath(canvas, path, opacity: layer.opacity);
-        }
+        _drawLayer(canvas, layer, size, opacity: layer.opacity);
       }
     }
 
-    // 3. Draw Active Stroke (the one currently being drawn)
+    // 3. Draw Active Stroke
     if (activePoints != null && activePoints!.isNotEmpty) {
       final paint = Paint()
         ..color = currentColor
@@ -56,18 +52,33 @@ class CanvasPainter extends CustomPainter {
     }
   }
 
+  void _drawLayer(Canvas canvas, AnimationLayer layer, Size size, {double opacity = 1.0}) {
+    // A. Draw Background Bitmap (Sketch)
+    if (layer.decodedImage != null) {
+      final paint = Paint()..color = Colors.white.withOpacity(opacity);
+      canvas.drawImageRect(
+        layer.decodedImage!,
+        Rect.fromLTWH(0, 0, layer.decodedImage!.width.toDouble(), layer.decodedImage!.height.toDouble()),
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        paint,
+      );
+    }
+
+    // B. Draw Paths
+    for (var path in layer.paths) {
+      _drawPath(canvas, path, opacity: opacity);
+    }
+  }
+
   void _drawPath(Canvas canvas, DrawnPath path, {double opacity = 1.0}) {
     final paint = Paint()
       ..color = path.isEraser 
-          ? Colors.transparent // Eraser logic needs a stack-based approach or BlendMode.clear
+          ? Colors.transparent 
           : path.color.withOpacity(path.color.opacity * opacity)
       ..strokeCap = StrokeCap.round
       ..strokeWidth = path.strokeWidth
       ..style = PaintingStyle.stroke;
     
-    // For erasers to work properly on a custom painter, we use BlendMode.clear 
-    // but that requires a separate layer/saveLayer.
-    // For MVP, we'll use a simple background-color-based eraser or BlendMode.
     if (path.isEraser) {
         paint.blendMode = BlendMode.clear;
     }
@@ -81,6 +92,6 @@ class CanvasPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CanvasPainter oldDelegate) {
-    return true; // Simplified for MVP
+    return true; 
   }
 }

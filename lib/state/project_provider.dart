@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/export_service.dart';
+import '../services/media_import_service.dart';
 
 enum DrawingTool { brush, eraser }
 
 class ProjectProvider extends ChangeNotifier {
   AnimationProject _project = AnimationProject(name: 'New Animation');
+  final MediaImportService _importService = MediaImportService();
   
   // Tool state
   DrawingTool _currentTool = DrawingTool.brush;
@@ -21,11 +25,15 @@ class ProjectProvider extends ChangeNotifier {
   bool _isPlaying = false;
   Timer? _playbackTimer;
 
+  // Processing state
+  bool _isProcessing = false;
+  double _processingProgress = 0.0;
+
   // Export state
   bool _isExporting = false;
   double _exportProgress = 0.0;
 
-  // Undo/Redo - For MVP, we'll store frame snapshots
+  // Undo/Redo
   final List<List<AnimationFrame>> _undoStack = [];
   final List<List<AnimationFrame>> _redoStack = [];
 
@@ -37,6 +45,8 @@ class ProjectProvider extends ChangeNotifier {
   int get currentLayerIndex => _currentLayerIndex;
   List<Offset?> get activePoints => _activePoints;
   bool get isPlaying => _isPlaying;
+  bool get isProcessing => _isProcessing;
+  double get processingProgress => _processingProgress;
   bool get isExporting => _isExporting;
   double get exportProgress => _exportProgress;
   
@@ -97,6 +107,82 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Media Imports
+  Future<void> importImageAsSketch() async {
+    _isProcessing = true;
+    _processingProgress = 0.0;
+    notifyListeners();
+
+    try {
+      final sketchData = await _importService.pickAndSketchImage();
+      if (sketchData != null) {
+        final decoded = await _decodeImage(sketchData);
+        _saveToUndo();
+        
+        final updatedLayers = List<AnimationLayer>.from(currentFrame.layers);
+        updatedLayers.add(AnimationLayer(
+          name: 'Sketch Layer',
+          sketchData: sketchData,
+          decodedImage: decoded,
+        ));
+        
+        final updatedFrames = List<AnimationFrame>.from(_project.frames);
+        updatedFrames[currentFrameIndex] = currentFrame.copyWith(layers: updatedLayers);
+        
+        _project.frames = updatedFrames;
+        _currentLayerIndex = updatedLayers.length - 1;
+      }
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> importVideoAsAnimation() async {
+    _isProcessing = true;
+    _processingProgress = 0.0;
+    notifyListeners();
+
+    try {
+      final sketchesData = await _importService.pickAndSketchVideo(
+        targetFps: 12.0,
+        onProgress: (p) {
+          _processingProgress = p;
+          notifyListeners();
+        },
+      );
+
+      if (sketchesData != null && sketchesData.isNotEmpty) {
+        _saveToUndo();
+        final List<AnimationFrame> newFrames = [];
+        for (var sketchData in sketchesData) {
+          final decoded = await _decodeImage(sketchData);
+          newFrames.add(AnimationFrame(
+            layers: [
+              AnimationLayer(name: 'Background Sketch', sketchData: sketchData, decodedImage: decoded),
+              AnimationLayer(name: 'Drawing Layer'),
+            ],
+          ));
+        }
+
+        _project.frames = newFrames;
+        _project.currentFrameIndex = 0;
+        _currentLayerIndex = 1;
+      }
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ui.Image> _decodeImage(Uint8List data) async {
+    final Completer<ui.Image> completer = Completer();
+    ui.decodeImageFromList(data, (ui.Image img) {
+      completer.complete(img);
+    });
+    return completer.future;
+  }
+
   // Frame operations
   void setCurrentFrame(int index) {
     if (index >= 0 && index < _project.frames.length) {
@@ -148,9 +234,6 @@ class ProjectProvider extends ChangeNotifier {
   void addLayer() {
     _saveToUndo();
     final updatedFrames = List<AnimationFrame>.from(_project.frames);
-    
-    // Add layer to ALL frames for consistency? Or just current? 
-    // Usually animation apps add layer to the whole project.
     for (var i = 0; i < updatedFrames.length; i++) {
         updatedFrames[i] = updatedFrames[i].copyWith(
             layers: [...updatedFrames[i].layers, AnimationLayer(name: 'Layer ${updatedFrames[i].layers.length + 1}')]
@@ -179,7 +262,7 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Undo/Redo
+  // Undo/Redo - ... existing undo/redo ...
   void _saveToUndo() {
     _undoStack.add(List.from(_project.frames.map((f) => f.copyWith())));
     _redoStack.clear();
