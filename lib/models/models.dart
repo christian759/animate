@@ -35,6 +35,62 @@ class ProjectMetadata {
       );
 }
 
+enum EffectType { none, grayscale, sepia, invert, vintage }
+
+class TextElement {
+  final String id;
+  String text;
+  Offset position;
+  double fontSize;
+  Color color;
+  double rotation;
+
+  TextElement({
+    String? id,
+    required this.text,
+    required this.position,
+    this.fontSize = 24.0,
+    this.color = Colors.white,
+    this.rotation = 0.0,
+  }) : id = id ?? const Uuid().v4();
+
+  TextElement copyWith({
+    String? text,
+    Offset? position,
+    double? fontSize,
+    Color? color,
+    double? rotation,
+  }) {
+    return TextElement(
+      id: id,
+      text: text ?? this.text,
+      position: position ?? this.position,
+      fontSize: fontSize ?? this.fontSize,
+      color: color ?? this.color,
+      rotation: rotation ?? this.rotation,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        'x': position.dx,
+        'y': position.dy,
+        'fontSize': fontSize,
+        'color': color.value,
+        'rotation': rotation,
+      };
+
+  factory TextElement.fromJson(Map<String, dynamic> json) => TextElement(
+        id: json['id'],
+        text: json['text'],
+        position: Offset(json['x'], json['y']),
+        fontSize: (json['fontSize'] ?? 24.0).toDouble(),
+        color: Color(json['color']),
+        rotation: (json['rotation'] ?? 0.0).toDouble(),
+      );
+}
+
 class DrawnPath {
   final List<Offset?> points;
   final Color color;
@@ -50,6 +106,9 @@ class DrawnPath {
     this.tool = 'pen',
   });
 
+  Map<String, dynamic> toJson() {
+    return {
+      'points': points.map((p) => p != null ? {'x': p.dx, 'y': p.dy} : null).toList(),
       'color': color.value,
       'strokeWidth': strokeWidth,
       'isEraser': isEraser,
@@ -72,27 +131,34 @@ class AnimationLayer {
   final String id;
   String name;
   final List<DrawnPath> paths;
+  final List<TextElement> texts;
+  EffectType effect;
   bool isVisible;
   double opacity;
-  Uint8List? sketchData; // Line-art bitmap data
-  ui.Image? decodedImage; // Transient decoded image for rendering
+  Uint8List? sketchData; 
+  ui.Image? decodedImage;
 
   AnimationLayer({
     String? id,
     required this.name,
     List<DrawnPath>? paths,
+    List<TextElement>? texts,
+    this.effect = EffectType.none,
     this.isVisible = true,
     this.opacity = 1.0,
     this.sketchData,
     this.decodedImage,
   })  : id = id ?? const Uuid().v4(),
-        paths = paths ?? [];
+        paths = paths ?? [],
+        texts = texts ?? [];
 
   AnimationLayer copyWith({
     String? name,
     bool? isVisible,
     double? opacity,
     List<DrawnPath>? paths,
+    List<TextElement>? texts,
+    EffectType? effect,
     Uint8List? sketchData,
     ui.Image? decodedImage,
   }) {
@@ -102,6 +168,8 @@ class AnimationLayer {
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
       paths: paths ?? List.from(this.paths),
+      texts: texts ?? List.from(this.texts),
+      effect: effect ?? this.effect,
       sketchData: sketchData ?? this.sketchData,
       decodedImage: decodedImage ?? this.decodedImage,
     );
@@ -113,7 +181,9 @@ class AnimationLayer {
       'name': name,
       'isVisible': isVisible,
       'opacity': opacity,
+      'effect': effect.index,
       'paths': paths.map((p) => p.toJson()).toList(),
+      'texts': texts.map((t) => t.toJson()).toList(),
     };
   }
 
@@ -123,7 +193,9 @@ class AnimationLayer {
       name: json['name'],
       isVisible: json['isVisible'] ?? true,
       opacity: (json['opacity'] ?? 1.0).toDouble(),
+      effect: EffectType.values[json['effect'] ?? 0],
       paths: (json['paths'] as List).map((p) => DrawnPath.fromJson(p)).toList(),
+      texts: (json['texts'] as List?)?.map((t) => TextElement.fromJson(t)).toList() ?? [],
     );
   }
 }
@@ -166,6 +238,7 @@ class AnimationProject {
   double fps;
   double exportWidth;
   double exportHeight;
+  String? audioPath;
 
   AnimationProject({
     String? id,
@@ -175,6 +248,7 @@ class AnimationProject {
     this.fps = 12.0,
     this.exportWidth = 1080,
     this.exportHeight = 1080,
+    this.audioPath,
   })  : id = id ?? const Uuid().v4(),
         frames = frames ?? [AnimationFrame()];
 
@@ -188,6 +262,7 @@ class AnimationProject {
         'fps': fps,
         'exportWidth': exportWidth,
         'exportHeight': exportHeight,
+        'audioPath': audioPath,
       };
 
   factory AnimationProject.fromJson(Map<String, dynamic> json) {
@@ -199,6 +274,7 @@ class AnimationProject {
       fps: (json['fps'] ?? 12.0).toDouble(),
       exportWidth: (json['exportWidth'] ?? 1080).toDouble(),
       exportHeight: (json['exportHeight'] ?? 1080).toDouble(),
+      audioPath: json['audioPath'],
     );
   }
 }

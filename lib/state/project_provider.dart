@@ -1,26 +1,31 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../models/models.dart';
 import '../services/export_service.dart';
 import '../services/media_import_service.dart';
 import '../services/project_repository.dart';
+import '../services/ad_service.dart';
 
-enum DrawingTool { pen, pencil, brush, eraser }
+enum DrawingTool { pen, pencil, brush, eraser, text }
 
 class ProjectProvider extends ChangeNotifier {
   AnimationProject _project = AnimationProject(name: 'New Animation');
   final MediaImportService _importService = MediaImportService();
   final ProjectRepository _repository = ProjectRepository();
+  final AudioPlayer _audioPlayer = AudioPlayer();
   
   // Tool state
-  DrawingTool _currentTool = DrawingTool.brush;
+  DrawingTool _currentTool = DrawingTool.pen;
   Color _currentColor = Colors.white;
   double _strokeWidth = 5.0;
   int _currentLayerIndex = 0;
   
-  // Drawing state (separated for performance)
+  // Drawing state
   List<Offset?> _activePoints = [];
   final ValueNotifier<List<Offset?>> activePointsNotifier = ValueNotifier([]);
   
@@ -113,6 +118,67 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- Audio ---
+
+  Future<void> pickAudio() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.audio,
+    );
+    if (result != null) {
+      _project.audioPath = result.files.single.path;
+      saveCurrentProject();
+      notifyListeners();
+    }
+  }
+
+  void removeAudio() {
+    _project.audioPath = null;
+    saveCurrentProject();
+    notifyListeners();
+  }
+
+  // --- Effects ---
+
+  void setLayerEffect(EffectType effect) {
+    _saveToUndo();
+    currentLayer.effect = effect;
+    saveCurrentProject();
+    notifyListeners();
+  }
+
+  // --- Text ---
+
+  void addText(String content, Offset pos) {
+    _saveToUndo();
+    final newText = TextElement(text: content, position: pos, color: _currentColor);
+    currentLayer.texts.add(newText);
+    saveCurrentProject();
+    notifyListeners();
+  }
+
+  void updateText(String id, {String? text, Offset? pos, double? fontSize, Color? color, double? rotation}) {
+    _saveToUndo();
+    final index = currentLayer.texts.indexWhere((t) => t.id == id);
+    if (index != -1) {
+      currentLayer.texts[index] = currentLayer.texts[index].copyWith(
+        text: text,
+        position: pos,
+        fontSize: fontSize,
+        color: color,
+        rotation: rotation,
+      );
+      saveCurrentProject();
+      notifyListeners();
+    }
+  }
+
+  void removeText(String id) {
+    _saveToUndo();
+    currentLayer.texts.removeWhere((t) => t.id == id);
+    saveCurrentProject();
+    notifyListeners();
+  }
+
   // --- Tool Setters ---
 
   void setTool(DrawingTool tool) {
@@ -133,19 +199,23 @@ class ProjectProvider extends ChangeNotifier {
   // --- Draw operations ---
 
   void startDrawing(Offset point) {
+    if (_currentTool == DrawingTool.text) {
+      // Logic handled via dialog in UI
+      return;
+    }
     _saveToUndo();
     _activePoints = [point];
     activePointsNotifier.value = List.from(_activePoints);
   }
 
   void updateDrawing(Offset point) {
+    if (_currentTool == DrawingTool.text) return;
     _activePoints.add(point);
     activePointsNotifier.value = List.from(_activePoints);
-    // Note: We don't call notifyListeners() here to avoid full app rebuild.
-    // Instead, DrawingCanvas should listen to activePointsNotifier.
   }
 
   void endDrawing() {
+    if (_currentTool == DrawingTool.text) return;
     if (_activePoints.isNotEmpty) {
       final newPath = DrawnPath(
         points: List.from(_activePoints),
@@ -166,8 +236,6 @@ class ProjectProvider extends ChangeNotifier {
       currentFrames[currentFrameIndex] = currentFrame.copyWith(layers: currentLayers);
       
       _project.frames = currentFrames;
-      
-      // Auto-save on end drawing (debounced in real app, but here simple)
       saveCurrentProject();
     }
     _activePoints = [];
@@ -175,86 +243,7 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- Media Imports ---
-
-  Future<void> importImageAsSketch() async {
-    _isProcessing = true;
-    _processingProgress = 0.0;
-    notifyListeners();
-
-    try {
-      final sketchData = await _importService.pickAndSketchImage();
-      if (sketchData != null) {
-        final decoded = await _decodeImage(sketchData);
-        _saveToUndo();
-        
-        final updatedLayers = List<AnimationLayer>.from(currentFrame.layers);
-        updatedLayers.add(AnimationLayer(
-          name: 'Sketch Layer',
-          sketchData: sketchData,
-          decodedImage: decoded,
-        ));
-        
-        final updatedFrames = List<AnimationFrame>.from(_project.frames);
-        updatedFrames[currentFrameIndex] = currentFrame.copyWith(layers: updatedLayers);
-        
-        _project.frames = updatedFrames;
-        _currentLayerIndex = updatedLayers.length - 1;
-        saveCurrentProject();
-      }
-    } finally {
-      _isProcessing = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> importVideoAsAnimation() async {
-    _isProcessing = true;
-    _processingProgress = 0.0;
-    notifyListeners();
-
-    try {
-      final sketchesData = await _importService.pickAndSketchVideo(
-        targetFps: 12.0,
-        onProgress: (p) {
-          _processingProgress = p;
-          notifyListeners();
-        },
-      );
-
-      if (sketchesData != null && sketchesData.isNotEmpty) {
-        _saveToUndo();
-        final List<AnimationFrame> newFrames = [];
-        for (var sketchData in sketchesData) {
-          final decoded = await _decodeImage(sketchData);
-          newFrames.add(AnimationFrame(
-            layers: [
-              AnimationLayer(name: 'Background Sketch', sketchData: sketchData, decodedImage: decoded),
-              AnimationLayer(name: 'Drawing Layer'),
-            ],
-          ));
-        }
-
-        _project.frames = newFrames;
-        _project.currentFrameIndex = 0;
-        _currentLayerIndex = 1;
-        saveCurrentProject();
-      }
-    } finally {
-      _isProcessing = false;
-      notifyListeners();
-    }
-  }
-
-  Future<ui.Image> _decodeImage(Uint8List data) async {
-    final Completer<ui.Image> completer = Completer();
-    ui.decodeImageFromList(data, (ui.Image img) {
-      completer.complete(img);
-    });
-    return completer.future;
-  }
-
-  // --- Frame operations ---
+  // --- Timeline Control ---
 
   void setCurrentFrame(int index) {
     if (index >= 0 && index < _project.frames.length) {
@@ -266,7 +255,7 @@ class ProjectProvider extends ChangeNotifier {
   void addFrame() {
     _saveToUndo();
     final newFrame = AnimationFrame(
-      layers: [AnimationLayer(name: 'Layer 1')]
+      layers: currentFrame.layers.map((l) => l.copyWith(paths: [], texts: [])).toList()
     );
     _project.frames.insert(currentFrameIndex + 1, newFrame);
     _project.currentFrameIndex++;
@@ -276,47 +265,20 @@ class ProjectProvider extends ChangeNotifier {
 
   void duplicateFrame() {
     _saveToUndo();
-    final currentF = currentFrame;
-    final duplicatedLayers = currentF.layers.map((l) => l.copyWith()).toList();
-    final newFrame = AnimationFrame(layers: duplicatedLayers);
-    
-    _project.frames.insert(currentFrameIndex + 1, newFrame);
+    final duplicatedFrame = currentFrame.copyWith();
+    _project.frames.insert(currentFrameIndex + 1, duplicatedFrame);
     _project.currentFrameIndex++;
     saveCurrentProject();
     notifyListeners();
   }
 
   void removeFrame() {
-    if (_project.frames.length > 1) {
-      _saveToUndo();
-      _project.frames.removeAt(currentFrameIndex);
-      if (currentFrameIndex >= _project.frames.length) {
-        _project.currentFrameIndex = _project.frames.length - 1;
-      }
-      saveCurrentProject();
-      notifyListeners();
-    }
-  }
-
-  // --- Layer operations ---
-
-  void setLayer(int index) {
-    if (index >= 0 && index < currentFrame.layers.length) {
-      _currentLayerIndex = index;
-      notifyListeners();
-    }
-  }
-
-  void addLayer() {
+    if (_project.frames.length <= 1) return;
     _saveToUndo();
-    final updatedFrames = List<AnimationFrame>.from(_project.frames);
-    for (var i = 0; i < updatedFrames.length; i++) {
-        updatedFrames[i] = updatedFrames[i].copyWith(
-            layers: [...updatedFrames[i].layers, AnimationLayer(name: 'Layer ${updatedFrames[i].layers.length + 1}')]
-        );
+    _project.frames.removeAt(currentFrameIndex);
+    if (currentFrameIndex >= _project.frames.length) {
+      _project.currentFrameIndex = _project.frames.length - 1;
     }
-    _project.frames = updatedFrames;
-    _currentLayerIndex = currentFrame.layers.length - 1;
     saveCurrentProject();
     notifyListeners();
   }
@@ -326,19 +288,66 @@ class ProjectProvider extends ChangeNotifier {
   void togglePlayback() {
     _isPlaying = !_isPlaying;
     if (_isPlaying) {
-      _playbackTimer?.cancel();
-      _playbackTimer = Timer.periodic(
-        Duration(milliseconds: (1000 / _project.fps).round()),
-        (timer) {
-          int nextFrame = (_project.currentFrameIndex + 1) % _project.frames.length;
-          _project.currentFrameIndex = nextFrame;
+      _startPlayback();
+    } else {
+      _stopPlayback();
+    }
+    notifyListeners();
+  }
+
+  void _startPlayback() async {
+    if (_project.audioPath != null) {
+      await _audioPlayer.play(DeviceFileSource(_project.audioPath!));
+      // Seek to current position roughly based on frame index
+      final frameTimeMs = (currentFrameIndex * (1000 / _project.fps)).round();
+      await _audioPlayer.seek(Duration(milliseconds: frameTimeMs));
+    }
+
+    _playbackTimer?.cancel();
+    _playbackTimer = Timer.periodic(
+      Duration(milliseconds: (1000 / _project.fps).round()),
+      (timer) {
+        int nextFrame = (_project.currentFrameIndex + 1) % _project.frames.length;
+        _project.currentFrameIndex = nextFrame;
+        
+        // If we looped back to start, loop audio too
+        if (nextFrame == 0 && _project.audioPath != null) {
+          _audioPlayer.seek(Duration.zero);
+        }
+        
+        notifyListeners();
+      },
+    );
+  }
+
+  void _stopPlayback() {
+    _playbackTimer?.cancel();
+    _audioPlayer.pause();
+  }
+
+  // --- Export ---
+
+  Future<String?> export(ExportFormat format, {Size? customResolution}) async {
+    _isExporting = true;
+    _exportProgress = 0.0;
+    notifyListeners();
+
+    try {
+      final result = await ExportService.exportProject(
+        project: _project,
+        format: format,
+        resolution: customResolution ?? Size(_project.exportWidth, _project.exportHeight),
+        onProgress: (progress) {
+          _exportProgress = progress;
           notifyListeners();
         },
       );
-    } else {
-      _playbackTimer?.cancel();
+      return result;
+    } finally {
+      _isExporting = false;
+      _exportProgress = 0.0;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   // --- Undo/Redo ---
@@ -370,34 +379,10 @@ class ProjectProvider extends ChangeNotifier {
     }
   }
 
-  // --- Export ---
-
-  Future<String?> export(ExportFormat format, {Size? customResolution}) async {
-    _isExporting = true;
-    _exportProgress = 0.0;
-    notifyListeners();
-
-    try {
-      final result = await ExportService.exportProject(
-        project: _project,
-        format: format,
-        resolution: customResolution ?? Size(_project.exportWidth, _project.exportHeight),
-        onProgress: (progress) {
-          _exportProgress = progress;
-          notifyListeners();
-        },
-      );
-      return result;
-    } finally {
-      _isExporting = false;
-      _exportProgress = 0.0;
-      notifyListeners();
-    }
-  }
-
   @override
   void dispose() {
     _playbackTimer?.cancel();
+    _audioPlayer.dispose();
     activePointsNotifier.dispose();
     super.dispose();
   }
