@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import '../models/models.dart';
 
 class CanvasPainter extends CustomPainter {
@@ -108,7 +109,30 @@ class CanvasPainter extends CustomPainter {
 
   void _drawLayer(Canvas canvas, AnimationLayer layer, Size size, {double opacity = 1.0}) {
     canvas.save();
+    
+    // Performance Optimization: Use Picture Cache
+    if (layer.cachedPicture != null) {
+      canvas.drawPicture(layer.cachedPicture!);
+      canvas.restore();
+      return;
+    }
 
+    // If cache is empty, record into a new picture
+    final recorder = ui.PictureRecorder();
+    final recordCanvas = Canvas(recorder);
+
+    _renderLayerImmediate(recordCanvas, layer, size, opacity: 1.0); // Record at full opacity
+    
+    // Finalize picture
+    layer.cachedPicture = recorder.endRecording();
+    
+    // Draw the newly cached picture
+    canvas.drawPicture(layer.cachedPicture!);
+    
+    canvas.restore();
+  }
+
+  void _renderLayerImmediate(Canvas canvas, AnimationLayer layer, Size size, {double opacity = 1.0}) {
     // Apply Effects (Color Filters)
     switch (layer.effect) {
       case EffectType.grayscale:
@@ -168,8 +192,6 @@ class CanvasPainter extends CustomPainter {
     if (layer.effect != EffectType.none) {
       canvas.restore(); // Restore from saveLayer for effects
     }
-    
-    canvas.restore(); // Initial save
   }
 
   void _drawPath(Canvas canvas, DrawnPath drawnPath, {double opacity = 1.0}) {

@@ -138,6 +138,14 @@ class AnimationLayer {
   Uint8List? sketchData; 
   ui.Image? decodedImage;
 
+  // Performance Cache
+  ui.Picture? _cachedPicture;
+  ui.Picture? get cachedPicture => _cachedPicture;
+  set cachedPicture(ui.Picture? value) {
+    _cachedPicture?.dispose();
+    _cachedPicture = value;
+  }
+
   AnimationLayer({
     String? id,
     required this.name,
@@ -151,6 +159,10 @@ class AnimationLayer {
   })  : id = id ?? const Uuid().v4(),
         paths = paths ?? [],
         texts = texts ?? [];
+
+  void clearCache() {
+    cachedPicture = null;
+  }
 
   AnimationLayer copyWith({
     String? name,
