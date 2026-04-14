@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../models/models.dart';
@@ -27,10 +28,13 @@ class ProjectRepository {
         final metadataFile = File(p.join(entity.path, _metadataFileName));
         if (await metadataFile.exists()) {
           try {
-            final json = jsonDecode(await metadataFile.readAsString());
+            // Processing metadata is small, usually fine on main thread, 
+            // but let's be consistent for huge libraries
+            final jsonStr = await metadataFile.readAsString();
+            final json = await compute(jsonDecode, jsonStr);
             projects.add(ProjectMetadata.fromJson(json));
           } catch (e) {
-            print('Error loading metadata for ${entity.path}: $e');
+            debugPrint('Error loading metadata for ${entity.path}: $e');
           }
         }
       }
@@ -49,20 +53,25 @@ class ProjectRepository {
       await projectDir.create();
     }
 
-    // 1. Save Project Data
+    // 1. Save Project Data in Background Isolate
     final projectFile = File(p.join(projectDir.path, _projectDataFileName));
-    await projectFile.writeAsString(jsonEncode(project.toJson()));
+    
+    // Performance: Encode JSON in background
+    final jsonStr = await compute((AnimationProject p) => jsonEncode(p.toJson()), project);
+    await projectFile.writeAsString(jsonStr);
 
     // 2. Save/Update Metadata
     final metadataFile = File(p.join(projectDir.path, _metadataFileName));
     final metadata = ProjectMetadata(
       id: project.id,
       name: project.name,
-      createdAt: DateTime.now(), // This should ideally persist from load, but for now...
+      createdAt: DateTime.now(), 
       lastModified: DateTime.now(),
       thumbnailPath: thumbnailPath,
     );
-    await metadataFile.writeAsString(jsonEncode(metadata.toJson()));
+    
+    final metaJsonStr = jsonEncode(metadata.toJson());
+    await metadataFile.writeAsString(metaJsonStr);
   }
 
   Future<AnimationProject?> loadProject(String id) async {
@@ -71,10 +80,13 @@ class ProjectRepository {
 
     if (await projectFile.exists()) {
       try {
-        final json = jsonDecode(await projectFile.readAsString());
+        final jsonStr = await projectFile.readAsString();
+        
+        // Performance: Decode JSON in background isolate
+        final json = await compute(jsonDecode, jsonStr);
         return AnimationProject.fromJson(json);
       } catch (e) {
-        print('Error loading project $id: $e');
+        debugPrint('Error loading project $id: $e');
       }
     }
     return null;

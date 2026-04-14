@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../models/models.dart';
@@ -29,9 +30,10 @@ class ProjectProvider extends ChangeNotifier {
   List<Offset?> _activePoints = [];
   final ValueNotifier<List<Offset?>> activePointsNotifier = ValueNotifier([]);
   
-  // Playback state
+  // Playback state (High Performance Ticker-like)
   bool _isPlaying = false;
   Timer? _playbackTimer;
+  int _lastPlaybackTick = 0;
 
   // Processing state
   bool _isProcessing = false;
@@ -142,6 +144,7 @@ class ProjectProvider extends ChangeNotifier {
   void setLayerEffect(EffectType effect) {
     _saveToUndo();
     currentLayer.effect = effect;
+    currentLayer.clearCache(); // Invalidate Cache
     saveCurrentProject();
     notifyListeners();
   }
@@ -152,6 +155,7 @@ class ProjectProvider extends ChangeNotifier {
     _saveToUndo();
     final newText = TextElement(text: content, position: pos, color: _currentColor);
     currentLayer.texts.add(newText);
+    currentLayer.clearCache(); // Invalidate Cache
     saveCurrentProject();
     notifyListeners();
   }
@@ -167,6 +171,7 @@ class ProjectProvider extends ChangeNotifier {
         color: color,
         rotation: rotation,
       );
+      currentLayer.clearCache(); // Invalidate Cache
       saveCurrentProject();
       notifyListeners();
     }
@@ -175,6 +180,7 @@ class ProjectProvider extends ChangeNotifier {
   void removeText(String id) {
     _saveToUndo();
     currentLayer.texts.removeWhere((t) => t.id == id);
+    currentLayer.clearCache(); // Invalidate Cache
     saveCurrentProject();
     notifyListeners();
   }
@@ -200,7 +206,6 @@ class ProjectProvider extends ChangeNotifier {
 
   void startDrawing(Offset point) {
     if (_currentTool == DrawingTool.text) {
-      // Logic handled via dialog in UI
       return;
     }
     _saveToUndo();
@@ -232,6 +237,8 @@ class ProjectProvider extends ChangeNotifier {
         paths: [...targetLayer.paths, newPath],
       );
       
+      currentLayers[_currentLayerIndex].clearCache(); // Invalidate Cache
+
       final currentFrames = List<AnimationFrame>.from(_project.frames);
       currentFrames[currentFrameIndex] = currentFrame.copyWith(layers: currentLayers);
       
@@ -298,24 +305,32 @@ class ProjectProvider extends ChangeNotifier {
   void _startPlayback() async {
     if (_project.audioPath != null) {
       await _audioPlayer.play(DeviceFileSource(_project.audioPath!));
-      // Seek to current position roughly based on frame index
       final frameTimeMs = (currentFrameIndex * (1000 / _project.fps)).round();
       await _audioPlayer.seek(Duration(milliseconds: frameTimeMs));
     }
 
     _playbackTimer?.cancel();
+    _lastPlaybackTick = DateTime.now().millisecondsSinceEpoch;
+    
+    // Performance: Using SchedulerBinding for frame-perfect updates if possible, 
+    // or a high-frequency timer to catch frame boundaries
     _playbackTimer = Timer.periodic(
-      Duration(milliseconds: (1000 / _project.fps).round()),
+      const Duration(milliseconds: 16), // 60fps check
       (timer) {
-        int nextFrame = (_project.currentFrameIndex + 1) % _project.frames.length;
-        _project.currentFrameIndex = nextFrame;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final elapsed = now - _lastPlaybackTick;
+        final frameDuration = 1000 / _project.fps;
         
-        // If we looped back to start, loop audio too
-        if (nextFrame == 0 && _project.audioPath != null) {
-          _audioPlayer.seek(Duration.zero);
+        if (elapsed >= frameDuration) {
+          _lastPlaybackTick = now;
+          int nextFrame = (_project.currentFrameIndex + 1) % _project.frames.length;
+          _project.currentFrameIndex = nextFrame;
+          
+          if (nextFrame == 0 && _project.audioPath != null) {
+            _audioPlayer.seek(Duration.zero);
+          }
+          notifyListeners();
         }
-        
-        notifyListeners();
       },
     );
   }
@@ -362,6 +377,14 @@ class ProjectProvider extends ChangeNotifier {
     if (_undoStack.isNotEmpty) {
       _redoStack.add(List.from(_project.frames.map((f) => f.copyWith())));
       _project.frames = _undoStack.removeLast();
+      
+      // Invalidate all layer caches on undo
+      for (var frame in _project.frames) {
+        for (var layer in frame.layers) {
+           layer.clearCache();
+        }
+      }
+
       if (_project.currentFrameIndex >= _project.frames.length) {
         _project.currentFrameIndex = _project.frames.length - 1;
       }
@@ -374,6 +397,14 @@ class ProjectProvider extends ChangeNotifier {
     if (_redoStack.isNotEmpty) {
       _undoStack.add(List.from(_project.frames.map((f) => f.copyWith())));
       _project.frames = _redoStack.removeLast();
+      
+      // Invalidate all layer caches on redo
+      for (var frame in _project.frames) {
+        for (var layer in frame.layers) {
+           layer.clearCache();
+        }
+      }
+
       saveCurrentProject();
       notifyListeners();
     }
