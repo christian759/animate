@@ -5,16 +5,16 @@ class CanvasPainter extends CustomPainter {
   final AnimationFrame? currentFrame;
   final AnimationFrame? previousFrame;
   final List<Offset?>? activePoints;
-  final Color currentColor;
-  final double strokeWidth;
+  final Color? currentColor;
+  final double? strokeWidth;
   final bool showOnionSkin;
 
   CanvasPainter({
     this.currentFrame,
     this.previousFrame,
     this.activePoints,
-    required this.currentColor,
-    required this.strokeWidth,
+    this.currentColor,
+    this.strokeWidth,
     this.showOnionSkin = true,
   });
 
@@ -24,7 +24,7 @@ class CanvasPainter extends CustomPainter {
     if (showOnionSkin && previousFrame != null) {
       for (var layer in previousFrame!.layers) {
         if (!layer.isVisible) continue;
-        _drawLayer(canvas, layer, size, opacity: 0.2);
+        _drawLayer(canvas, layer, size, opacity: 0.15);
       }
     }
 
@@ -37,18 +37,26 @@ class CanvasPainter extends CustomPainter {
     }
 
     // 3. Draw Active Stroke
-    if (activePoints != null && activePoints!.isNotEmpty) {
+    if (activePoints != null && activePoints!.isNotEmpty && currentColor != null && strokeWidth != null) {
       final paint = Paint()
-        ..color = currentColor
+        ..color = currentColor!
         ..strokeCap = StrokeCap.round
-        ..strokeWidth = strokeWidth
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = strokeWidth!
         ..style = PaintingStyle.stroke;
 
-      for (int i = 0; i < activePoints!.length - 1; i++) {
-        if (activePoints![i] != null && activePoints![i + 1] != null) {
-          canvas.drawLine(activePoints![i]!, activePoints![i + 1]!, paint);
+      final path = Path();
+      bool first = true;
+      for (var point in activePoints!) {
+        if (point == null) continue;
+        if (first) {
+          path.moveTo(point.dx, point.dy);
+          first = false;
+        } else {
+          path.lineTo(point.dx, point.dy);
         }
       }
+      canvas.drawPath(path, paint);
     }
   }
 
@@ -70,28 +78,39 @@ class CanvasPainter extends CustomPainter {
     }
   }
 
-  void _drawPath(Canvas canvas, DrawnPath path, {double opacity = 1.0}) {
+  void _drawPath(Canvas canvas, DrawnPath drawnPath, {double opacity = 1.0}) {
+    if (drawnPath.points.isEmpty) return;
+
     final paint = Paint()
-      ..color = path.isEraser 
+      ..color = drawnPath.isEraser 
           ? Colors.transparent 
-          : path.color.withOpacity(path.color.opacity * opacity)
+          : drawnPath.color.withOpacity(drawnPath.color.opacity * opacity)
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = path.strokeWidth
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = drawnPath.strokeWidth
       ..style = PaintingStyle.stroke;
     
-    if (path.isEraser) {
+    if (drawnPath.isEraser) {
         paint.blendMode = BlendMode.clear;
     }
 
-    for (int i = 0; i < path.points.length - 1; i++) {
-      if (path.points[i] != null && path.points[i + 1] != null) {
-        canvas.drawLine(path.points[i]!, path.points[i + 1]!, paint);
+    final path = Path();
+    bool first = true;
+    for (var point in drawnPath.points) {
+      if (point == null) continue;
+      if (first) {
+        path.moveTo(point.dx, point.dy);
+        first = false;
+      } else {
+        path.lineTo(point.dx, point.dy);
       }
     }
+    
+    canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(covariant CanvasPainter oldDelegate) {
-    return true; 
+    return true; // Simplified for now, but optimizations can be added based on properties
   }
 }

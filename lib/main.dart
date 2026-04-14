@@ -7,6 +7,7 @@ import 'ui/widgets/toolbar.dart';
 import 'ui/widgets/timeline.dart';
 import 'ui/widgets/layer_panel.dart';
 import 'ui/widgets/export_dialog.dart';
+import 'ui/screens/project_home_screen.dart';
 
 import 'package:media_kit/media_kit.dart';
 
@@ -40,7 +41,7 @@ class AnimXApp extends StatelessWidget {
         textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
         useMaterial3: true,
       ),
-      home: const MainAnimationScreen(),
+      home: const ProjectHomeScreen(),
     );
   }
 }
@@ -113,21 +114,28 @@ class _TopHeader extends StatelessWidget {
         children: [
           Row(
             children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white70, size: 18),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              const SizedBox(width: 8),
               const Icon(Icons.movie_filter, color: Colors.deepPurpleAccent, size: 28),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Anim-X Studio',
-                    style: GoogleFonts.outfit(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  Consumer<ProjectProvider>(
+                    builder: (context, provider, _) => Text(
+                      provider.project.name,
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
                   ),
                   const Text(
-                    'V1.0.0 Alpha',
+                    'Anim-X Studio V1.0',
                     style: TextStyle(color: Colors.white38, fontSize: 10),
                   ),
                 ],

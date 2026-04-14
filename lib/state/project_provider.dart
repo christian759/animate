@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/export_service.dart';
 import '../services/media_import_service.dart';
+import '../services/project_repository.dart';
 
 enum DrawingTool { brush, eraser }
 
 class ProjectProvider extends ChangeNotifier {
   AnimationProject _project = AnimationProject(name: 'New Animation');
   final MediaImportService _importService = MediaImportService();
+  final ProjectRepository _repository = ProjectRepository();
   
   // Tool state
   DrawingTool _currentTool = DrawingTool.brush;
@@ -18,8 +20,9 @@ class ProjectProvider extends ChangeNotifier {
   double _strokeWidth = 5.0;
   int _currentLayerIndex = 0;
   
-  // Drawing state
+  // Drawing state (separated for performance)
   List<Offset?> _activePoints = [];
+  final ValueNotifier<List<Offset?>> activePointsNotifier = ValueNotifier([]);
   
   // Playback state
   bool _isPlaying = false;
@@ -54,7 +57,49 @@ class ProjectProvider extends ChangeNotifier {
   AnimationFrame get currentFrame => _project.currentFrame;
   AnimationLayer get currentLayer => currentFrame.layers[_currentLayerIndex];
 
-  // Tool Setters
+  // --- Project Management ---
+
+  Future<void> loadProject(String id) async {
+    _isProcessing = true;
+    notifyListeners();
+    try {
+      final loaded = await _repository.loadProject(id);
+      if (loaded != null) {
+        _project = loaded;
+        _currentLayerIndex = 0;
+        _undoStack.clear();
+        _redoStack.clear();
+      }
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> newProject(String name) async {
+    _project = AnimationProject(name: name);
+    _currentLayerIndex = 0;
+    _undoStack.clear();
+    _redoStack.clear();
+    await saveCurrentProject();
+    notifyListeners();
+  }
+
+  Future<void> saveCurrentProject({String? thumbnailPath}) async {
+    await _repository.saveProject(_project, thumbnailPath: thumbnailPath);
+  }
+
+  Future<List<ProjectMetadata>> getRecentProjects() async {
+    return _repository.listProjects();
+  }
+  
+  Future<void> deleteProject(String id) async {
+    await _repository.deleteProject(id);
+    notifyListeners();
+  }
+
+  // --- Tool Setters ---
+
   void setTool(DrawingTool tool) {
     _currentTool = tool;
     notifyListeners();
@@ -70,16 +115,19 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Draw operations
+  // --- Draw operations ---
+
   void startDrawing(Offset point) {
     _saveToUndo();
     _activePoints = [point];
-    notifyListeners();
+    activePointsNotifier.value = List.from(_activePoints);
   }
 
   void updateDrawing(Offset point) {
     _activePoints.add(point);
-    notifyListeners();
+    activePointsNotifier.value = List.from(_activePoints);
+    // Note: We don't call notifyListeners() here to avoid full app rebuild.
+    // Instead, DrawingCanvas should listen to activePointsNotifier.
   }
 
   void endDrawing() {
@@ -102,12 +150,17 @@ class ProjectProvider extends ChangeNotifier {
       currentFrames[currentFrameIndex] = currentFrame.copyWith(layers: currentLayers);
       
       _project.frames = currentFrames;
+      
+      // Auto-save on end drawing (debounced in real app, but here simple)
+      saveCurrentProject();
     }
     _activePoints = [];
+    activePointsNotifier.value = [];
     notifyListeners();
   }
 
-  // Media Imports
+  // --- Media Imports ---
+
   Future<void> importImageAsSketch() async {
     _isProcessing = true;
     _processingProgress = 0.0;
@@ -131,6 +184,7 @@ class ProjectProvider extends ChangeNotifier {
         
         _project.frames = updatedFrames;
         _currentLayerIndex = updatedLayers.length - 1;
+        saveCurrentProject();
       }
     } finally {
       _isProcessing = false;
@@ -168,6 +222,7 @@ class ProjectProvider extends ChangeNotifier {
         _project.frames = newFrames;
         _project.currentFrameIndex = 0;
         _currentLayerIndex = 1;
+        saveCurrentProject();
       }
     } finally {
       _isProcessing = false;
@@ -183,7 +238,8 @@ class ProjectProvider extends ChangeNotifier {
     return completer.future;
   }
 
-  // Frame operations
+  // --- Frame operations ---
+
   void setCurrentFrame(int index) {
     if (index >= 0 && index < _project.frames.length) {
       _project.currentFrameIndex = index;
@@ -198,6 +254,7 @@ class ProjectProvider extends ChangeNotifier {
     );
     _project.frames.insert(currentFrameIndex + 1, newFrame);
     _project.currentFrameIndex++;
+    saveCurrentProject();
     notifyListeners();
   }
 
@@ -209,6 +266,7 @@ class ProjectProvider extends ChangeNotifier {
     
     _project.frames.insert(currentFrameIndex + 1, newFrame);
     _project.currentFrameIndex++;
+    saveCurrentProject();
     notifyListeners();
   }
 
@@ -219,11 +277,13 @@ class ProjectProvider extends ChangeNotifier {
       if (currentFrameIndex >= _project.frames.length) {
         _project.currentFrameIndex = _project.frames.length - 1;
       }
+      saveCurrentProject();
       notifyListeners();
     }
   }
 
-  // Layer operations
+  // --- Layer operations ---
+
   void setLayer(int index) {
     if (index >= 0 && index < currentFrame.layers.length) {
       _currentLayerIndex = index;
@@ -241,13 +301,16 @@ class ProjectProvider extends ChangeNotifier {
     }
     _project.frames = updatedFrames;
     _currentLayerIndex = currentFrame.layers.length - 1;
+    saveCurrentProject();
     notifyListeners();
   }
 
-  // Playback
+  // --- Playback ---
+
   void togglePlayback() {
     _isPlaying = !_isPlaying;
     if (_isPlaying) {
+      _playbackTimer?.cancel();
       _playbackTimer = Timer.periodic(
         Duration(milliseconds: (1000 / _project.fps).round()),
         (timer) {
@@ -262,7 +325,8 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Undo/Redo - ... existing undo/redo ...
+  // --- Undo/Redo ---
+
   void _saveToUndo() {
     _undoStack.add(List.from(_project.frames.map((f) => f.copyWith())));
     _redoStack.clear();
@@ -276,6 +340,7 @@ class ProjectProvider extends ChangeNotifier {
       if (_project.currentFrameIndex >= _project.frames.length) {
         _project.currentFrameIndex = _project.frames.length - 1;
       }
+      saveCurrentProject();
       notifyListeners();
     }
   }
@@ -284,11 +349,13 @@ class ProjectProvider extends ChangeNotifier {
     if (_redoStack.isNotEmpty) {
       _undoStack.add(List.from(_project.frames.map((f) => f.copyWith())));
       _project.frames = _redoStack.removeLast();
+      saveCurrentProject();
       notifyListeners();
     }
   }
 
-  // Export
+  // --- Export ---
+
   Future<String?> export(ExportFormat format) async {
     _isExporting = true;
     _exportProgress = 0.0;
@@ -314,6 +381,7 @@ class ProjectProvider extends ChangeNotifier {
   @override
   void dispose() {
     _playbackTimer?.cancel();
+    activePointsNotifier.dispose();
     super.dispose();
   }
 }
