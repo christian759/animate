@@ -61,7 +61,7 @@ class MediaImportService {
       print('Video import error: $e');
       return null;
     } finally {
-      await player.release();
+      await player.dispose();
     }
   }
 
