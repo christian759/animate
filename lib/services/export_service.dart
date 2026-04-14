@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:ffmpeg_kit_flutter_full_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_full_gpl/return_code.dart';
 import 'package:image/image.dart' as img;
 import '../models/models.dart';
 import '../ui/canvas_painter.dart';
@@ -31,13 +29,12 @@ class ExportService {
         final recorder = ui.PictureRecorder();
         final canvas = Canvas(recorder);
         
-        // We need a size. For now, we'll use a standard 1080x1080 or the actual screen size if we had it.
-        // Let's assume 1080x1080 for high quality.
+        // Use a standard 1080x1080 for high quality
         const size = Size(1080, 1080);
         
         final painter = CanvasPainter(
           currentFrame: frame,
-          currentColor: Colors.black, // Doesn't matter for rendering existing paths
+          currentColor: Colors.black,
           strokeWidth: 1.0,
           showOnionSkin: false,
         );
@@ -53,43 +50,39 @@ class ExportService {
         await frameFile.writeAsBytes(byteData.buffer.asUint8List());
         frameFiles.add(frameFile);
         
-        onProgress?.call((i + 1) / (project.frames.length * 2)); // Rendering is the first half
+        onProgress?.call((i + 1) / (project.frames.length * 2));
       }
 
       // 2. Encode to requested format
-      final outputFile = p.join(tempDir.path, 'export_${DateTime.now().millisecondsSinceEpoch}.${format == ExportFormat.mp4 ? 'mp4' : 'gif'}');
+      final outputFile = p.join(tempDir.path, 'export_${DateTime.now().millisecondsSinceEpoch}.${format == ExportFormat.gif ? 'gif' : 'zip'}');
       
       if (format == ExportFormat.mp4) {
-        final command = '-framerate ${project.fps} -i ${exportDir.path}/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -y $outputFile';
-        
-        final session = await FFmpegKit.execute(command);
-        final returnCode = await session.getReturnCode();
-        
-        if (ReturnCode.isSuccess(returnCode)) {
-          onProgress?.call(1.0);
-          return outputFile;
-        } else {
-          return null;
-        }
+        // MP4 Export removed to avoid SDK 33 dependencies
+        debugPrint('MP4 Export is currently disabled.');
+        return null;
       } else if (format == ExportFormat.gif) {
-        // Use image package for GIF encoding
-        final animation = img.Animation();
-        for (var file in frameFiles) {
-          final bytes = await file.readAsBytes();
-          final image = img.decodePng(bytes);
-          if (image != null) {
-            animation.addFrame(image);
-            animation.frames.last.duration = (1000 / project.fps).round();
+        // Use image package for GIF encoding (v4.x API)
+        if (frameFiles.isEmpty) return null;
+        
+        final firstFrameBytes = await frameFiles[0].readAsBytes();
+        final animation = img.decodePng(firstFrameBytes);
+        if (animation == null) return null;
+        
+        final centisecondDelay = (100 / project.fps).round();
+        for (int i = 1; i < frameFiles.length; i++) {
+          final bytes = await frameFiles[i].readAsBytes();
+          final frame = img.decodePng(bytes);
+          if (frame != null) {
+            animation.addFrame(frame);
           }
+          onProgress?.call(0.5 + (i + 1) / (project.frames.length * 2));
         }
         
-        final gifBytes = img.encodeGifAnimation(animation);
-        if (gifBytes != null) {
-          final file = File(outputFile);
-          await file.writeAsBytes(gifBytes);
-          onProgress?.call(1.0);
-          return outputFile;
-        }
+        final gifBytes = img.GifEncoder(delay: centisecondDelay).encode(animation);
+        final file = File(outputFile);
+        await file.writeAsBytes(gifBytes);
+        onProgress?.call(1.0);
+        return outputFile;
       }
 
       return null;
@@ -97,8 +90,7 @@ class ExportService {
       debugPrint('Export error: $e');
       return null;
     } finally {
-      // Cleanup temp frames
-      // await exportDir.delete(recursive: true); // Leave this for debugging or production cleanup
+      // Cleanup logic could go here
     }
   }
 }

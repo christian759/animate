@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
@@ -30,6 +31,7 @@ class AnimationLayer {
   final List<DrawnPath> paths;
   bool isVisible;
   double opacity;
+  Uint8List? sketchData; // Line-art bitmap data
 
   AnimationLayer({
     String? id,
@@ -37,6 +39,7 @@ class AnimationLayer {
     List<DrawnPath>? paths,
     this.isVisible = true,
     this.opacity = 1.0,
+    this.sketchData,
   })  : id = id ?? const Uuid().v4(),
         paths = paths ?? [];
 
@@ -45,6 +48,7 @@ class AnimationLayer {
     bool? isVisible,
     double? opacity,
     List<DrawnPath>? paths,
+    Uint8List? sketchData,
   }) {
     return AnimationLayer(
       id: id,
@@ -52,7 +56,19 @@ class AnimationLayer {
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
       paths: paths ?? List.from(this.paths),
+      sketchData: sketchData ?? this.sketchData,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'isVisible': isVisible,
+      'opacity': opacity,
+      'paths': paths.map((p) => p.toJson()).toList(),
+      // Avoiding big blobs in JSON for now, but sketchData could be base64 if needed
+    };
   }
 }
 
