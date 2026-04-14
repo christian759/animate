@@ -16,6 +16,7 @@ class ExportService {
   static Future<String?> exportProject({
     required AnimationProject project,
     required ExportFormat format,
+    Size resolution = const Size(1080, 1080),
     void Function(double progress)? onProgress,
   }) async {
     final tempDir = await getTemporaryDirectory();
@@ -31,8 +32,7 @@ class ExportService {
         final recorder = ui.PictureRecorder();
         final canvas = Canvas(recorder);
         
-        // High quality output
-        const size = Size(1080, 1080);
+        final size = resolution;
         
         final painter = CanvasPainter(
           currentFrame: frame,

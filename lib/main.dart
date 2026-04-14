@@ -8,11 +8,15 @@ import 'ui/widgets/timeline.dart';
 import 'ui/widgets/layer_panel.dart';
 import 'ui/widgets/export_dialog.dart';
 import 'ui/screens/project_home_screen.dart';
+import 'services/ad_service.dart';
 
 import 'package:media_kit/media_kit.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AdService().initialize();
+  AdService().loadInterstitialAd();
+  
   MediaKit.ensureInitialized();
   runApp(
     ChangeNotifierProvider(

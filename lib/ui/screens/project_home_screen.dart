@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../../state/project_provider.dart';
 import '../../models/models.dart';
 import '../../main.dart';
+import '../../services/ad_service.dart';
 
 class ProjectHomeScreen extends StatefulWidget {
   const ProjectHomeScreen({super.key});
@@ -15,17 +17,43 @@ class ProjectHomeScreen extends StatefulWidget {
 
 class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
   late Future<List<ProjectMetadata>> _projectsFuture;
+  BannerAd? _bannerAd;
+  bool _isBannerLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _refreshProjects();
+    _loadBannerAd();
+  }
+
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: AdService().bannerAdUnitId,
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          setState(() => _isBannerLoaded = true);
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('BannerAd failed to load: $error');
+        },
+      ),
+    )..load();
   }
 
   void _refreshProjects() {
     setState(() {
       _projectsFuture = Provider.of<ProjectProvider>(context, listen: false).getRecentProjects();
     });
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
 
   @override
@@ -59,7 +87,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                     }
 
                     return GridView.builder(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 80), // Extra bottom padding for banner/button
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         crossAxisSpacing: 20,
@@ -86,6 +114,14 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                   },
                 ),
               ),
+              // Banner Ad at the bottom
+              if (_isBannerLoaded && _bannerAd != null)
+                Container(
+                  alignment: Alignment.center,
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: _bannerAd!),
+                ),
             ],
           ),
         ),

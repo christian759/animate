@@ -98,6 +98,21 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- Project Settings ---
+
+  void setFps(double fps) {
+    _project.fps = fps;
+    saveCurrentProject();
+    notifyListeners();
+  }
+
+  void setExportResolution(double width, double height) {
+    _project.exportWidth = width;
+    _project.exportHeight = height;
+    saveCurrentProject();
+    notifyListeners();
+  }
+
   // --- Tool Setters ---
 
   void setTool(DrawingTool tool) {
@@ -357,7 +372,7 @@ class ProjectProvider extends ChangeNotifier {
 
   // --- Export ---
 
-  Future<String?> export(ExportFormat format) async {
+  Future<String?> export(ExportFormat format, {Size? customResolution}) async {
     _isExporting = true;
     _exportProgress = 0.0;
     notifyListeners();
@@ -366,6 +381,7 @@ class ProjectProvider extends ChangeNotifier {
       final result = await ExportService.exportProject(
         project: _project,
         format: format,
+        resolution: customResolution ?? Size(_project.exportWidth, _project.exportHeight),
         onProgress: (progress) {
           _exportProgress = progress;
           notifyListeners();

@@ -164,6 +164,8 @@ class AnimationProject {
   List<AnimationFrame> frames;
   int currentFrameIndex;
   double fps;
+  double exportWidth;
+  double exportHeight;
 
   AnimationProject({
     String? id,
@@ -171,6 +173,8 @@ class AnimationProject {
     List<AnimationFrame>? frames,
     this.currentFrameIndex = 0,
     this.fps = 12.0,
+    this.exportWidth = 1080,
+    this.exportHeight = 1080,
   })  : id = id ?? const Uuid().v4(),
         frames = frames ?? [AnimationFrame()];
 
@@ -182,6 +186,8 @@ class AnimationProject {
         'frames': frames.map((f) => f.toJson()).toList(),
         'currentFrameIndex': currentFrameIndex,
         'fps': fps,
+        'exportWidth': exportWidth,
+        'exportHeight': exportHeight,
       };
 
   factory AnimationProject.fromJson(Map<String, dynamic> json) {
@@ -191,6 +197,8 @@ class AnimationProject {
       frames: (json['frames'] as List).map((f) => AnimationFrame.fromJson(f)).toList(),
       currentFrameIndex: json['currentFrameIndex'] ?? 0,
       fps: (json['fps'] ?? 12.0).toDouble(),
+      exportWidth: (json['exportWidth'] ?? 1080).toDouble(),
+      exportHeight: (json['exportHeight'] ?? 1080).toDouble(),
     );
   }
 }
