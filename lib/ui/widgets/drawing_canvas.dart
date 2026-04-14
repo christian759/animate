@@ -55,6 +55,7 @@ class DrawingCanvas extends StatelessWidget {
                         activePoints: points,
                         currentColor: provider.currentColor,
                         strokeWidth: provider.strokeWidth,
+                        activeTool: provider.currentTool.name,
                         showOnionSkin: false,
                       ),
                     );

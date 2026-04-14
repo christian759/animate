@@ -21,38 +21,55 @@ class AnimToolbar extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 12),
+               _ToolButton(
+                icon: Icons.edit_rounded,
+                tooltip: 'Pen',
+                isSelected: provider.currentTool == DrawingTool.pen,
+                onTap: () => provider.setTool(DrawingTool.pen),
+              ),
               _ToolButton(
-                icon: Icons.edit,
+                icon: Icons.create_rounded,
+                tooltip: 'Pencil',
+                isSelected: provider.currentTool == DrawingTool.pencil,
+                onTap: () => provider.setTool(DrawingTool.pencil),
+              ),
+              _ToolButton(
+                icon: Icons.brush_rounded,
+                tooltip: 'Paint Brush',
                 isSelected: provider.currentTool == DrawingTool.brush,
                 onTap: () => provider.setTool(DrawingTool.brush),
               ),
               _ToolButton(
-                icon: Icons.auto_fix_normal,
+                icon: Icons.auto_fix_normal_rounded,
+                tooltip: 'Eraser',
                 isSelected: provider.currentTool == DrawingTool.eraser,
                 onTap: () => provider.setTool(DrawingTool.eraser),
               ),
-              const Divider(color: Colors.white10),
+              const Divider(color: Colors.white10, indent: 15, endIndent: 15),
               _ColorButton(
                 color: provider.currentColor,
                 onTap: () => _showColorPicker(context, provider),
               ),
               const SizedBox(height: 12),
               _ToolButton(
-                icon: Icons.undo,
+                icon: Icons.undo_rounded,
+                tooltip: 'Undo',
                 isSelected: false,
                 onTap: provider.undo,
               ),
               _ToolButton(
-                icon: Icons.redo,
+                icon: Icons.redo_rounded,
+                tooltip: 'Redo',
                 isSelected: false,
                 onTap: provider.redo,
               ),
               const Spacer(),
               _ToolButton(
-                icon: Icons.layers,
+                icon: Icons.layers_rounded,
+                tooltip: 'Layers',
                 isSelected: false,
                 onTap: () {
-                    // Logic for layer selection will be in a separate panel
+                    // Layer panel toggle logic could go here
                 },
               ),
               const SizedBox(height: 12),
@@ -67,11 +84,15 @@ class AnimToolbar extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Pick a color'),
+        backgroundColor: const Color(0xFF1A1A2A),
+        title: const Text('Pick a Color', style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: ColorPicker(
             pickerColor: provider.currentColor,
             onColorChanged: provider.setColor,
+            pickerAreaHeightPercent: 0.7,
+            enableAlpha: false,
+            displayThumbColor: true,
           ),
         ),
         actions: [
@@ -87,11 +108,13 @@ class AnimToolbar extends StatelessWidget {
 
 class _ToolButton extends StatelessWidget {
   final IconData icon;
+  final String tooltip;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _ToolButton({
     required this.icon,
+    required this.tooltip,
     required this.isSelected,
     required this.onTap,
   });
@@ -100,12 +123,19 @@ class _ToolButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: IconButton(
-        icon: Icon(icon),
-        color: isSelected ? theme.colorScheme.primary : Colors.white70,
-        iconSize: 28,
-        onPressed: onTap,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Tooltip(
+        message: tooltip,
+        child: IconButton(
+          icon: Icon(icon),
+          color: isSelected ? theme.colorScheme.primary : Colors.white70,
+          iconSize: 26,
+          onPressed: onTap,
+          style: IconButton.styleFrom(
+            backgroundColor: isSelected ? theme.colorScheme.primary.withOpacity(0.1) : Colors.transparent,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
       ),
     );
   }
@@ -122,15 +152,25 @@ class _ColorButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.4),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
         ),
       ),
     );

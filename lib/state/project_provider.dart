@@ -7,7 +7,7 @@ import '../services/export_service.dart';
 import '../services/media_import_service.dart';
 import '../services/project_repository.dart';
 
-enum DrawingTool { brush, eraser }
+enum DrawingTool { pen, pencil, brush, eraser }
 
 class ProjectProvider extends ChangeNotifier {
   AnimationProject _project = AnimationProject(name: 'New Animation');
@@ -137,6 +137,7 @@ class ProjectProvider extends ChangeNotifier {
         color: _currentTool == DrawingTool.eraser ? Colors.transparent : _currentColor,
         strokeWidth: _strokeWidth,
         isEraser: _currentTool == DrawingTool.eraser,
+        tool: _currentTool.name,
       );
       
       final currentLayers = List<AnimationLayer>.from(currentFrame.layers);

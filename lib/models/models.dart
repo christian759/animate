@@ -40,20 +40,20 @@ class DrawnPath {
   final Color color;
   final double strokeWidth;
   final bool isEraser;
+  final String tool;
 
   DrawnPath({
     required this.points,
     required this.color,
     required this.strokeWidth,
     this.isEraser = false,
+    this.tool = 'pen',
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'points': points.map((p) => p != null ? {'x': p.dx, 'y': p.dy} : null).toList(),
       'color': color.value,
       'strokeWidth': strokeWidth,
       'isEraser': isEraser,
+      'tool': tool,
     };
   }
 
@@ -63,6 +63,7 @@ class DrawnPath {
       color: Color(json['color']),
       strokeWidth: json['strokeWidth']?.toDouble() ?? 5.0,
       isEraser: json['isEraser'] ?? false,
+      tool: json['tool'] ?? 'pen',
     );
   }
 }
