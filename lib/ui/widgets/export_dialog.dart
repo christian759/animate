@@ -12,7 +12,7 @@ class ExportDialog extends StatefulWidget {
 }
 
 class _ExportDialogState extends State<ExportDialog> {
-  ExportFormat _selectedFormat = ExportFormat.mp4;
+  ExportFormat _selectedFormat = ExportFormat.gif;
   String? _exportedPath;
 
   // Local settings for the dialog
@@ -69,9 +69,9 @@ class _ExportDialogState extends State<ExportDialog> {
                     children: [
                       Expanded(
                         child: _FormatOptionMini(
-                          label: 'MP4',
-                          isSelected: _selectedFormat == ExportFormat.mp4,
-                          onTap: () => setState(() => _selectedFormat = ExportFormat.mp4),
+                          label: 'PNG Seq',
+                          isSelected: _selectedFormat == ExportFormat.pngSequence,
+                          onTap: () => setState(() => _selectedFormat = ExportFormat.pngSequence),
                         ),
                       ),
                       const SizedBox(width: 12),

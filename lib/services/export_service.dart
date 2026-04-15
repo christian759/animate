@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:image/image.dart' as img;
 import '../models/models.dart';
 import '../ui/canvas_painter.dart';
 
@@ -54,7 +55,41 @@ class ExportService {
         return frameDir.path;
       }
 
-      debugPrint('FFmpeg has been removed. Video/GIF export is currently unavailable.');
+      if (format == ExportFormat.gif) {
+        onProgress?.call(0.66);
+        
+        final frameFiles = frameDir.listSync().whereType<File>().toList()
+          ..sort((a, b) => a.path.compareTo(b.path));
+          
+        img.Image? anim;
+        
+        for (int i = 0; i < frameFiles.length; i++) {
+          final file = frameFiles[i];
+          final bytes = await file.readAsBytes();
+          final image = img.decodePng(bytes);
+          if (image == null) continue;
+          
+          // Image package 4.x timing (frameDuration is in milliseconds)
+          image.frameDuration = (1000 ~/ project.fps); 
+          
+          if (anim == null) {
+            anim = image;
+          } else {
+            anim.addFrame(image);
+          }
+          onProgress?.call(0.66 + ((i + 1) / frameFiles.length) * 0.3);
+        }
+        
+        if (anim != null) {
+          final gifBytes = img.encodeGif(anim);
+          final outputFile = p.join(tempDir.path, 'export_$exportId.gif');
+          await File(outputFile).writeAsBytes(gifBytes);
+          onProgress?.call(1.0);
+          return outputFile;
+        }
+      }
+
+      debugPrint('Video (MP4) export requires external native libraries and is currently unavailable without FFmpeg.');
       return null;
     } catch (e) {
       debugPrint('Export error: $e');
